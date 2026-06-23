@@ -3,138 +3,134 @@ package application
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"log"
+	"strings"
 	"tiercelieux-llm-go/internal/domain"
 	"tiercelieux-llm-go/internal/domain/repository"
 	"time"
 )
 
-type Game struct {
-	Players        []domain.Player
-	Turn           int
-	SpeakingSystem repository.Speaker
+const DefaultPlayerCount = 6
+
+type Engine struct {
+	Game         *domain.Game
+	PlayerSystem repository.PlayerSystem
 }
 
-func NewGame(iaNames []string, speakingSystem repository.Speaker) *Game {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	roles := []domain.Role{
-		domain.RoleWerewolf,
-		domain.RoleWerewolf,
-		domain.RoleVillager,
-		domain.RoleVillager,
-		domain.RoleVillager,
-		domain.RoleVillager,
+func NewEngine(playerCount int, playerSystem repository.PlayerSystem) *Engine {
+	if playerCount <= 0 {
+		playerCount = DefaultPlayerCount
 	}
-	temperaments := []domain.Temperament{
-		domain.TempAgressive,
-		domain.TempFearful,
-		domain.TempCalculator,
-		domain.TempStrategic,
-		domain.TempUndecided,
-		domain.TempIronic,
-	}
-
-	r.Shuffle(len(roles), func(i, j int) {
-		roles[i], roles[j] = roles[j], roles[i]
-	})
-
-	r.Shuffle(len(temperaments), func(i, j int) {
-		temperaments[i], temperaments[j] = temperaments[j], temperaments[i]
-	})
-
-	var players []domain.Player
-
-	for i, name := range iaNames {
-		players = append(players, domain.Player{
-			Name:        name,
-			Role:        roles[i+1],
-			Temperament: temperaments[i+1],
-			IsAlive:     true,
-		})
-	}
-
-	return &Game{Players: players, Turn: 1, SpeakingSystem: speakingSystem}
+	game := domain.NewGame(playerCount)
+	return &Engine{Game: game, PlayerSystem: playerSystem}
 }
 
-func (g *Game) DisplayVillage() {
-	fmt.Printf("\n--- État du Village (Tour %d) ---\n", g.Turn)
-	for p := range g.Players {
-		status := "Vivant"
-		if !g.Players[p].IsAlive {
-			status = "Mort 💀"
-		}
-		fmt.Printf("- %s (%s) (%s) - %s\n", g.Players[p].Name, string(g.Players[p].Role), string(g.Players[p].Temperament), status)
-	}
-}
+func (e *Engine) Run(ctx context.Context) {
+	for !e.IsGameOver() {
+		fmt.Printf("\n=================== JOUR %d ===================\n", e.Game.Turn)
 
-func (g *Game) Run(ctx context.Context) {
-	chatChannel := make(chan string, len(g.Players))
+		lastNightAction := ""
+		lastNightAction = e.ExecuteNightAction(ctx)
 
-	var aliveIaCount int
-
-	situation := "Le village se réveille paisiblement."
-
-	for _, p := range g.Players {
-		if !p.IsAlive && p.Role == domain.RoleVillager {
-			continue
+		if e.IsGameOver() {
+			break
 		}
 
-		aliveIaCount++
+		situation := fmt.Sprintf(
+			`Le jour se lève sur le village. Hier, %s a été éliminé par les loups-garous. Débattez pour démasquer le coupable. Chaque joueur restant peut exprimer son 
+			opinion en fonction de son tempérament. Les joueurs restants sont %v`, lastNightAction, e.Game.AllPlayers())
+		debate := e.RunDebate(ctx, situation)
+		e.ExecuteVotes(ctx, debate)
 
-		playerToTalk := p
-
-		go func() {
-			reply, err := g.SpeakingSystem.Talk(ctx, &playerToTalk, situation)
-			if err != nil {
-				chatChannel <- fmt.Sprintf("[%s] : Error: %v", playerToTalk.Name, err)
-			} else {
-				chatChannel <- fmt.Sprintf("[%s] : %s", playerToTalk.Name, reply)
-			}
-		}()
+		time.Sleep(time.Second)
 	}
-
-	for i := 0; i < aliveIaCount; i++ {
-		<-chatChannel
-	}
-	fmt.Println("\n\n[Fin du débat du jour]")
-	g.ExecuteVotes(ctx)
 }
 
-func (g *Game) ExecuteVotes(ctx context.Context) {
+func (e *Engine) ExecuteNightAction(ctx context.Context) string {
+	fmt.Println("\n🌙 [Nuit] Les Loups-Garous se réveillent...")
+
+	votesTable := make(map[string]int, len(e.Game.Werewolves))
+	maxVotes := 0
+	for _, p := range e.Game.Werewolves {
+		victim := e.PlayerSystem.ChooseWhoToEat(ctx, &p, e.Game.Villagers)
+		votesTable[victim.Name()]++
+		if votesTable[victim.Name()] > maxVotes {
+			maxVotes = votesTable[victim.Name()]
+		}
+	}
+
+	// Get the first even if there is a tie
+	var victim string
+	for name, count := range votesTable {
+		if count == maxVotes {
+			victim = name
+			break
+		}
+	}
+
+	log.Default().Printf("Les loups-garous ont mangé %s\n", victim)
+	e.Game.EliminatePlayer(victim)
+	return victim
+}
+
+func (e *Engine) RunDebate(ctx context.Context, situation string) string {
+	fmt.Println("\n💬 [Début du débat public] :")
+
+	strBuilder := strings.Builder{}
+
+	for _, p := range e.Game.AllPlayers() {
+		strBuilder.WriteString(fmt.Sprintf("[%s] (%s) : ", p.Name, p.Temperament))
+		reply, err := e.PlayerSystem.Talk(ctx, p, situation)
+		if err != nil {
+			fmt.Printf("Erreur: %v\n", err)
+		} else {
+			fmt.Println(reply)
+		}
+	}
+	fmt.Println("\n[Fin du débat du jour]")
+
+	return strBuilder.String()
+}
+
+func (e *Engine) ExecuteVotes(ctx context.Context, debate string) {
+	fmt.Println("\n🗳️ [Phase de scrutin] :")
+
 	votesTable := make(map[string]int)
-	var suspects []string
-
-	for i := range g.Players {
-		if g.Players[i].IsAlive {
-			suspects = append(suspects, g.Players[i].Name)
+	for _, p := range e.Game.AllPlayers() {
+		target, err := e.PlayerSystem.ChooseWhoToVote(ctx, p, debate, e.Game.AllPlayersExcept(p.Name()))
+		if err != nil {
+			fmt.Printf("Erreur: %v\n", err)
+		} else {
+			fmt.Printf("- %s vote contre %s\n", p.Name(), target)
+			votesTable[target]++
 		}
 	}
 
-	for i, p := range g.Players {
-		if !p.IsAlive {
-			continue
-		}
-
-		var target string
-		target = g.SpeakingSystem.ChooseWhoToVote(ctx, &g.Players[i], suspects)
-		fmt.Printf("[VOTE] %s a voté contre %s\n", g.Players[i].Name, target)
-		votesTable[target]++
-	}
-	var mostVoted string
+	var victim string
 	maxVotes := -1
 	for name, count := range votesTable {
-		if count > maxVotes {
+		if count > maxVotes && name != "" {
 			maxVotes = count
-			mostVoted = name
+			victim = name
 		}
 	}
 
-	for i, p := range g.Players {
-		if p.Name == mostVoted {
-			g.Players[i].IsAlive = false
-			fmt.Printf("\n💀 Le village a décidé d'éliminer %s ! Son rôle était : %s\n", p.Name, string(p.Role))
-		}
+	// Application de la sentence
+	if victim != "" {
+		e.Game.EliminatePlayer(victim)
+		fmt.Printf("\n💀 Le verdict est tombé : %s est éliminé.\n Il avait le rôle de %s\n", victim, e.Game.Deceased[victim].Role())
+		log.Printf("Le village compte désormais %d villageois et %d loups-garous\n", len(e.Game.Villagers), len(e.Game.Werewolves))
 	}
-	g.Turn++
+	e.Game.Turn++
+}
+
+func (e *Engine) IsGameOver() bool {
+	if len(e.Game.Werewolves) == 0 {
+		fmt.Println("\n🎉 VICTOIRE DU VILLAGE ! Le dernier Loup-Garou a été débusqué.")
+		return true
+	} else if len(e.Game.Villagers) == 0 {
+		fmt.Println("\n🩸 VICTOIRE DES LOUPS-GAROUS ! Ils ont dévoré le village.")
+		return true
+	}
+	return false
 }

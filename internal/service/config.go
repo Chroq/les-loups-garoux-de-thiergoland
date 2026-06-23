@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"tiercelieux-llm-go/internal/domain"
 )
 
 const (
@@ -13,6 +14,8 @@ const (
 	envOllamaUrl   = "OLLAMA_URL"
 	envOllamaModel = "OLLAMA_MODEL"
 
+	envGameMode = "GAME_MODE"
+
 	commentPrefix = "#"
 	separator     = "="
 )
@@ -20,6 +23,7 @@ const (
 type Config struct {
 	OllamaUrl   string
 	OllamaModel string
+	GameMode    domain.GameMode
 }
 
 func NewConfig() Config {
@@ -46,6 +50,14 @@ func NewConfig() Config {
 				config.OllamaUrl = value
 			case envOllamaModel:
 				config.OllamaModel = value
+			case envGameMode:
+				switch value {
+				case "random":
+					config.GameMode = domain.GameModeRandom
+				case "llm":
+					config.GameMode = domain.GameModeLLM
+				}
+
 			}
 		}
 	}
