@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -74,16 +73,6 @@ func NewGame(playerNumber int) *Game {
 		Deceased:   make(map[string]PlayerInterface, playerNumber),
 		Turn:       1,
 		GameState:  GameStateDay,
-	}
-}
-
-func (g *Game) DisplayAllRoles() {
-	fmt.Println("\n[Rôles secrets] :")
-	for _, p := range g.Villagers {
-		fmt.Printf("- %s est un Villageois 👨‍🌾 (%s)\n", p.Name(), p.Temperament())
-	}
-	for _, p := range g.Werewolves {
-		fmt.Printf("- %s est un Loup-Garou 🐺 (%s)\n", p.Name(), p.Temperament())
 	}
 }
 

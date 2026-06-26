@@ -14,7 +14,8 @@ const (
 	envOllamaUrl   = "OLLAMA_URL"
 	envOllamaModel = "OLLAMA_MODEL"
 
-	envGameMode = "GAME_MODE"
+	envGameMode    = "GAME_MODE"
+	envDisplayMode = "DISPLAY_MODE"
 
 	commentPrefix = "#"
 	separator     = "="
@@ -24,6 +25,7 @@ type Config struct {
 	OllamaUrl   string
 	OllamaModel string
 	GameMode    domain.GameMode
+	DisplayMode domain.DisplayMode
 }
 
 func NewConfig() Config {
@@ -56,8 +58,18 @@ func NewConfig() Config {
 					config.GameMode = domain.GameModeRandom
 				case "llm":
 					config.GameMode = domain.GameModeLLM
+				default:
+					log.Fatalf("invalid game mode: %s", value)
 				}
-
+			case envDisplayMode:
+				switch value {
+				case "terminal":
+					config.DisplayMode = domain.DisplayModeTerminal
+				case "websocket":
+					config.DisplayMode = domain.DisplayModeWebsocket
+				default:
+					log.Fatalf("invalid display mode: %s", value)
+				}
 			}
 		}
 	}
