@@ -9,12 +9,14 @@ import (
 	"tiercelieux-llm-go/internal/domain/repository"
 	"tiercelieux-llm-go/internal/interface/terminal"
 	"tiercelieux-llm-go/internal/interface/websocket"
+	"tiercelieux-llm-go/internal/logger"
 	"tiercelieux-llm-go/internal/service"
 )
 
 func main() {
 	ctx := context.Background()
 	config := service.NewConfig()
+	logger.SetLevel(config.LogLevel)
 
 	var err error
 

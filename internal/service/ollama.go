@@ -8,6 +8,7 @@ import (
 	"strings"
 	"tiercelieux-llm-go/internal/domain"
 	"tiercelieux-llm-go/internal/domain/repository"
+	"tiercelieux-llm-go/internal/logger"
 
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/googleai"
@@ -120,22 +121,22 @@ func (l *LLM) ChooseWhoToVote(ctx context.Context, player domain.PlayerInterface
 		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
 	}, llms.WithTools([]llms.Tool{voteTool}))
 	if err != nil {
-		log.Default().Printf("Error: %v\n", err)
+		logger.Errorf("Error: %v\n", err)
 		return "", err
 	}
 
-	log.Default().Printf("resp.Choices: %v \n", resp.Choices)
+	logger.Debugf("resp.Choices: %v\n", resp.Choices)
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
-		log.Default().Printf("choice.ToolCalls: %v \n", choice.ToolCalls)
+		logger.Debugf("choice.ToolCalls: %v\n", choice.ToolCalls)
 		if len(choice.ToolCalls) > 0 {
 			toolCall := choice.ToolCalls[0]
-			log.Default().Printf("Tool Call: %v\n", toolCall)
+			logger.Debugf("Tool Call: %v\n", toolCall)
 			if toolCall.FunctionCall.Name == ToolCallingVote {
 				var args VoteArgument
 				json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args)
 				target := strings.TrimSpace(args.Name)
-				log.Default().Printf("Target: %s\n", target)
+				logger.Debugf("Target: %s\n", target)
 				for _, suspect := range suspects {
 					if strings.EqualFold(suspect.Name(), target) {
 						return suspect.Name(), nil
