@@ -10,7 +10,8 @@ import (
 	"tiercelieux-llm-go/internal/domain/repository"
 
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
+	"github.com/tmc/langchaingo/llms/googleai"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
 const (
@@ -22,21 +23,31 @@ type LLM struct {
 }
 
 func NewLLM(ctx context.Context, config Config) (repository.PlayerSystem, error) {
-	llm, err := ollama.New(
-		ollama.WithModel(config.OllamaModel),
-		ollama.WithServerURL(config.OllamaUrl),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ollama client: %v", err)
+	var llm llms.Model
+	var err error
+	if config.LlmApiProvider == "gemini" {
+		llm, err = googleai.New(ctx, googleai.WithAPIKey(config.LlmApiKey))
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		// Use OpenAI-compatible client pointing to Ollama's local URL.
+		// Ollama's OpenAI API is at config.OllamaUrl + "/v1" (e.g. http://localhost:11434/v1).
+		// This provides native tool calling support which the langchaingo ollama client lacks.
+		llm, err = openai.New(
+			openai.WithBaseURL(config.OllamaUrl+"/v1"),
+			openai.WithModel(config.OllamaModel),
+			openai.WithToken("ollama"), // Ollama does not require a token but openai client needs one configured
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create ollama client: %v", err)
+		}
 	}
+
 	return &LLM{model: llm}, nil
 }
 
 func (l *LLM) Talk(ctx context.Context, player domain.PlayerInterface, situation string) (string, error) {
-	if true {
-		return "I don't want to talk", nil
-	}
-
 	systemPrompt := fmt.Sprintf(
 		`Tu es %s, un joueur de Loups-Garous. 
 		Ton rôle SECRET est : %s. 
@@ -69,43 +80,62 @@ func (l *LLM) Talk(ctx context.Context, player domain.PlayerInterface, situation
 }
 
 type VoteArgument struct {
-	TargetName string `json:"target_name" description:"Le nom exact du joueur suspecté à éliminer"`
+	Name string `json:"name" description:"Le nom exact du joueur suspecté à éliminer"`
 }
 
 func (l *LLM) ChooseWhoToVote(ctx context.Context, player domain.PlayerInterface, debate string, suspects []domain.PlayerInterface) (string, error) {
+	var suspectNames []string
+	for _, s := range suspects {
+		suspectNames = append(suspectNames, s.Name())
+	}
+	suspectsListStr := strings.Join(suspectNames, ", ")
+
 	voteTool := llms.Tool{
 		Type: "function",
 		Function: &llms.FunctionDefinition{
 			Name:        ToolCallingVote,
 			Description: "Permet de voter officiellement contre un suspect pour l'éliminer du village.",
-			Parameters:  VoteArgument{},
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{
+						"type":        "string",
+						"description": "Le nom exact du joueur suspecté à éliminer",
+					},
+				},
+				"required": []string{"name"},
+			},
 		},
 	}
 
 	prompt := fmt.Sprintf(
-		`Tu es %s et voici le débat : %v. Vote pour le joueur que tu penses être le Loup-Garou, par contre tu ne peux pas voter contre toi même.`, //
-		player.Name(), debate)
+		`Tu es %s et voici le débat : %v. Vote pour le joueur que tu penses être le Loup-Garou parmi la liste des suspects suivants : %s`,
+		player.Name(), debate, suspectsListStr)
 
 	resp, err := l.model.GenerateContent(ctx, []llms.MessageContent{
-		llms.TextParts(llms.ChatMessageTypeSystem, fmt.Sprintf(
-			`Tu es %s (%s). 
-			Ne produis aucun raisonnement ou pensée intermédiaire, vote en te basant sur le débat.
+		llms.TextParts(llms.ChatMessageTypeSystem,
+			`Ne produis aucun raisonnement ou pensée intermédiaire, vote en te basant sur le débat.
 			Tu ne peux pas voter contre toi même. 
-			Réponds uniquement avec un seul Tool Call de type "Vote".`,
-			player.Name(), player.Role())),
+			Réponds uniquement avec un seul Tool Call de type "Vote".`),
 		llms.TextParts(llms.ChatMessageTypeHuman, prompt),
-	}, llms.WithTools([]llms.Tool{voteTool}), llms.WithMaxTokens(60))
-	if err == nil && len(resp.Choices) > 0 {
+	}, llms.WithTools([]llms.Tool{voteTool}))
+	if err != nil {
+		log.Default().Printf("Error: %v\n", err)
+		return "", err
+	}
+
+	log.Default().Printf("resp.Choices: %v \n", resp.Choices)
+	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
-		log.Default().Printf("Tool call : %v \n", choice.ToolCalls)
+		log.Default().Printf("choice.ToolCalls: %v \n", choice.ToolCalls)
 		if len(choice.ToolCalls) > 0 {
 			toolCall := choice.ToolCalls[0]
 			log.Default().Printf("Tool Call: %v\n", toolCall)
 			if toolCall.FunctionCall.Name == ToolCallingVote {
 				var args VoteArgument
 				json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args)
-				target := strings.TrimSpace(args.TargetName)
-				log.Default().Printf("Target: %s\n", string(target))
+				target := strings.TrimSpace(args.Name)
+				log.Default().Printf("Target: %s\n", target)
 				for _, suspect := range suspects {
 					if strings.EqualFold(suspect.Name(), target) {
 						return suspect.Name(), nil

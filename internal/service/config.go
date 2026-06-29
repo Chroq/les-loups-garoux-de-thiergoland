@@ -11,6 +11,9 @@ import (
 const (
 	envFile = ".env"
 
+	envLLMApiKey      = "LLM_API_KEY"
+	envLLMApiProvider = "LLM_API_PROVIDER"
+
 	envOllamaUrl   = "OLLAMA_URL"
 	envOllamaModel = "OLLAMA_MODEL"
 
@@ -22,6 +25,9 @@ const (
 )
 
 type Config struct {
+	LlmApiKey      string
+	LlmApiProvider string
+
 	OllamaUrl   string
 	OllamaModel string
 	GameMode    domain.GameMode
@@ -48,6 +54,10 @@ func NewConfig() Config {
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
 			switch key {
+			case envLLMApiKey:
+				config.LlmApiKey = value
+			case envLLMApiProvider:
+				config.LlmApiProvider = value
 			case envOllamaUrl:
 				config.OllamaUrl = value
 			case envOllamaModel:
