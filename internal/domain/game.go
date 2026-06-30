@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -77,26 +76,16 @@ func NewGame(playerNumber int) *Game {
 	}
 }
 
-func (g *Game) DisplayAllRoles() {
-	fmt.Println("\n[Rôles secrets] :")
-	for _, p := range g.Villagers {
-		fmt.Printf("- %s est un Villageois 👨‍🌾 (%s)\n", p.Name(), p.Temperament())
-	}
-	for _, p := range g.Werewolves {
-		fmt.Printf("- %s est un Loup-Garou 🐺 (%s)\n", p.Name(), p.Temperament())
-	}
-}
-
 func (g *Game) EliminatePlayer(name string) {
 	for _, p := range g.Villagers {
-		if p.Player.name == name {
+		if p.name == name {
 			delete(g.Villagers, name)
 			g.Deceased[name] = p
 			return
 		}
 	}
 	for _, p := range g.Werewolves {
-		if p.Player.name == name {
+		if p.name == name {
 			delete(g.Werewolves, name)
 			g.Deceased[name] = p
 			return
@@ -118,12 +107,12 @@ func (g *Game) AllPlayers() []PlayerInterface {
 func (g *Game) AllPlayersExcept(excepted string) []PlayerInterface {
 	players := make([]PlayerInterface, 0, len(g.Villagers)+len(g.Werewolves))
 	for i := range g.Villagers {
-		if g.Villagers[i].Player.name != excepted {
+		if g.Villagers[i].name != excepted {
 			players = append(players, g.Villagers[i])
 		}
 	}
 	for i := range g.Werewolves {
-		if g.Werewolves[i].Player.name != excepted {
+		if g.Werewolves[i].name != excepted {
 			players = append(players, g.Werewolves[i])
 		}
 	}

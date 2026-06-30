@@ -2,24 +2,28 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"tiercelieux-llm-go/internal/application"
 	"tiercelieux-llm-go/internal/domain"
 	"tiercelieux-llm-go/internal/domain/repository"
+	"tiercelieux-llm-go/internal/interface/terminal"
+	"tiercelieux-llm-go/internal/interface/websocket"
+	"tiercelieux-llm-go/internal/logger"
 	"tiercelieux-llm-go/internal/service"
 )
 
 func main() {
 	ctx := context.Background()
 	config := service.NewConfig()
+	logger.SetLevel(config.LogLevel)
 
 	var err error
+
 	var playerSystem repository.PlayerSystem
 	switch config.GameMode {
 	case domain.GameModeLLM:
-		fmt.Println("Testing connection to Ollama...")
+		log.Println("Testing connection to Ollama...")
 		playerSystem, err = service.NewLLM(ctx, config)
 		if err != nil {
 			log.Fatalf("failed to create llm: %v", err)
@@ -30,9 +34,16 @@ func main() {
 		log.Fatalf("unknown game mode: %v", config.GameMode)
 	}
 
-	game := application.NewEngine(application.DefaultPlayerCount, playerSystem)
+	logger.Infof("Display mode: %v", config.DisplayMode)
+	var displaySystem repository.DisplaySystem
+	switch config.DisplayMode {
+	case domain.DisplayModeTerminal:
+		displaySystem = terminal.NewTerminalSystem()
+	case domain.DisplayModeWebsocket:
+		displaySystem = websocket.NewWSSystem(config.DisplayPort)
+	default:
+		log.Fatalf("unknown display mode: %v", config.DisplayMode)
+	}
 
-	fmt.Println("============ DÉBUT DE LA SIMULATION ============")
-	game.Game.DisplayAllRoles()
-	game.Run(ctx)
+	application.NewEngine(application.DefaultPlayerCount, playerSystem, displaySystem).Run(ctx)
 }

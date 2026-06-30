@@ -11,19 +11,33 @@ import (
 const (
 	envFile = ".env"
 
+	envLLMApiKey      = "LLM_API_KEY"
+	envLLMApiProvider = "LLM_API_PROVIDER"
+
 	envOllamaUrl   = "OLLAMA_URL"
 	envOllamaModel = "OLLAMA_MODEL"
 
 	envGameMode = "GAME_MODE"
+
+	envDisplayMode = "DISPLAY_MODE"
+	envDisplayPort = "DISPLAY_PORT"
+
+	envLogLevel = "LOG_LEVEL"
 
 	commentPrefix = "#"
 	separator     = "="
 )
 
 type Config struct {
+	LlmApiKey      string
+	LlmApiProvider string
+
 	OllamaUrl   string
 	OllamaModel string
 	GameMode    domain.GameMode
+	DisplayMode domain.DisplayMode
+	DisplayPort string
+	LogLevel    string
 }
 
 func NewConfig() Config {
@@ -33,7 +47,11 @@ func NewConfig() Config {
 	if err != nil {
 		log.Fatalf("failed to open %s file: %v", envFile, err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Fatalf("failed to close %s file: %v", envFile, err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -46,6 +64,10 @@ func NewConfig() Config {
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
 			switch key {
+			case envLLMApiKey:
+				config.LlmApiKey = value
+			case envLLMApiProvider:
+				config.LlmApiProvider = value
 			case envOllamaUrl:
 				config.OllamaUrl = value
 			case envOllamaModel:
@@ -56,8 +78,22 @@ func NewConfig() Config {
 					config.GameMode = domain.GameModeRandom
 				case "llm":
 					config.GameMode = domain.GameModeLLM
+				default:
+					log.Fatalf("invalid game mode: %s", value)
 				}
-
+			case envDisplayMode:
+				switch value {
+				case "terminal":
+					config.DisplayMode = domain.DisplayModeTerminal
+				case "websocket":
+					config.DisplayMode = domain.DisplayModeWebsocket
+				default:
+					log.Fatalf("invalid display mode: %s", value)
+				}
+			case envDisplayPort:
+				config.DisplayPort = value
+			case envLogLevel:
+				config.LogLevel = value
 			}
 		}
 	}

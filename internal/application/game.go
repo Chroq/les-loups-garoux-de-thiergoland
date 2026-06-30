@@ -7,27 +7,30 @@ import (
 	"strings"
 	"tiercelieux-llm-go/internal/domain"
 	"tiercelieux-llm-go/internal/domain/repository"
+	"tiercelieux-llm-go/internal/logger"
 	"time"
 )
 
 const DefaultPlayerCount = 6
 
 type Engine struct {
-	Game         *domain.Game
-	PlayerSystem repository.PlayerSystem
+	Game          *domain.Game
+	PlayerSystem  repository.PlayerSystem
+	DisplaySystem repository.DisplaySystem
 }
 
-func NewEngine(playerCount int, playerSystem repository.PlayerSystem) *Engine {
+func NewEngine(playerCount int, playerSystem repository.PlayerSystem, displaySystem repository.DisplaySystem) *Engine {
 	if playerCount <= 0 {
 		playerCount = DefaultPlayerCount
 	}
 	game := domain.NewGame(playerCount)
-	return &Engine{Game: game, PlayerSystem: playerSystem}
+	return &Engine{Game: game, PlayerSystem: playerSystem, DisplaySystem: displaySystem}
 }
 
 func (e *Engine) Run(ctx context.Context) {
 	for !e.IsGameOver() {
-		fmt.Printf("\n=================== JOUR %d ===================\n", e.Game.Turn)
+		e.Game.GameState = domain.GameStateNight
+		e.DisplaySystem.DisplaySummary(e.Game)
 
 		lastNightAction := ""
 		lastNightAction = e.ExecuteNightAction(ctx)
@@ -36,9 +39,15 @@ func (e *Engine) Run(ctx context.Context) {
 			break
 		}
 
+		e.Game.GameState = domain.GameStateDay
+		e.DisplaySystem.DisplaySummary(e.Game)
+
 		situation := fmt.Sprintf(
-			`Le jour se lève sur le village. Hier, %s a été éliminé par les loups-garous. Débattez pour démasquer le coupable. Chaque joueur restant peut exprimer son 
-			opinion en fonction de son tempérament. Les joueurs restants sont %v`, lastNightAction, e.Game.AllPlayers())
+			`Le jour se lève sur le village. 
+			Hier, %s a été éliminé par les loups-garous. 
+			Débattez pour démasquer le coupable. 
+			Chaque joueur restant peut exprimer son opinion en fonction de son tempérament. 
+			Les joueurs restants sont %v`, lastNightAction, e.Game.AllPlayers())
 		debate := e.RunDebate(ctx, situation)
 		e.ExecuteVotes(ctx, debate)
 
@@ -47,8 +56,6 @@ func (e *Engine) Run(ctx context.Context) {
 }
 
 func (e *Engine) ExecuteNightAction(ctx context.Context) string {
-	fmt.Println("\n🌙 [Nuit] Les Loups-Garous se réveillent...")
-
 	votesTable := make(map[string]int, len(e.Game.Werewolves))
 	maxVotes := 0
 	for _, p := range e.Game.Werewolves {
@@ -68,40 +75,37 @@ func (e *Engine) ExecuteNightAction(ctx context.Context) string {
 		}
 	}
 
-	log.Default().Printf("Les loups-garous ont mangé %s\n", victim)
+	logger.Infof("Werewolves ate %s", victim)
 	e.Game.EliminatePlayer(victim)
+	e.DisplaySystem.DisplayVictim(victim, e.Game.Deceased[victim].Role())
 	return victim
 }
 
 func (e *Engine) RunDebate(ctx context.Context, situation string) string {
-	fmt.Println("\n💬 [Début du débat public] :")
-
-	strBuilder := strings.Builder{}
+	var strBuilder strings.Builder
 
 	for _, p := range e.Game.AllPlayers() {
-		strBuilder.WriteString(fmt.Sprintf("[%s] (%s) : ", p.Name, p.Temperament))
 		reply, err := e.PlayerSystem.Talk(ctx, p, situation)
 		if err != nil {
-			fmt.Printf("Erreur: %v\n", err)
+			log.Default().Printf("Erreur: %v\n", err)
 		} else {
-			fmt.Println(reply)
+			formatted := fmt.Sprintf("[%s] (%s) : %s", p.Name(), p.Temperament().String(), reply)
+			strBuilder.WriteString(formatted + "\n")
+			e.DisplaySystem.Display(formatted)
 		}
 	}
-	fmt.Println("\n[Fin du débat du jour]")
 
 	return strBuilder.String()
 }
 
 func (e *Engine) ExecuteVotes(ctx context.Context, debate string) {
-	fmt.Println("\n🗳️ [Phase de scrutin] :")
-
 	votesTable := make(map[string]int)
 	for _, p := range e.Game.AllPlayers() {
 		target, err := e.PlayerSystem.ChooseWhoToVote(ctx, p, debate, e.Game.AllPlayersExcept(p.Name()))
 		if err != nil {
 			fmt.Printf("Erreur: %v\n", err)
 		} else {
-			fmt.Printf("- %s vote contre %s\n", p.Name(), target)
+			e.DisplaySystem.DisplayVote(p.Name(), target)
 			votesTable[target]++
 		}
 	}
@@ -118,18 +122,18 @@ func (e *Engine) ExecuteVotes(ctx context.Context, debate string) {
 	// Application de la sentence
 	if victim != "" {
 		e.Game.EliminatePlayer(victim)
-		fmt.Printf("\n💀 Le verdict est tombé : %s est éliminé.\n Il avait le rôle de %s\n", victim, e.Game.Deceased[victim].Role())
-		log.Printf("Le village compte désormais %d villageois et %d loups-garous\n", len(e.Game.Villagers), len(e.Game.Werewolves))
+		e.DisplaySystem.DisplayVictim(victim, e.Game.Deceased[victim].Role())
+		logger.Infof("%d villagers | %d werewolves", len(e.Game.Villagers), len(e.Game.Werewolves))
 	}
 	e.Game.Turn++
 }
 
 func (e *Engine) IsGameOver() bool {
 	if len(e.Game.Werewolves) == 0 {
-		fmt.Println("\n🎉 VICTOIRE DU VILLAGE ! Le dernier Loup-Garou a été débusqué.")
+		e.DisplaySystem.DisplayVillagerVictory()
 		return true
 	} else if len(e.Game.Villagers) == 0 {
-		fmt.Println("\n🩸 VICTOIRE DES LOUPS-GAROUS ! Ils ont dévoré le village.")
+		e.DisplaySystem.DisplayWerewolfVictory()
 		return true
 	}
 	return false
