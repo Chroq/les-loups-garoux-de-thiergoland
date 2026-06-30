@@ -34,12 +34,13 @@ func main() {
 		log.Fatalf("unknown game mode: %v", config.GameMode)
 	}
 
+	logger.Infof("Display mode: %v", config.DisplayMode)
 	var displaySystem repository.DisplaySystem
 	switch config.DisplayMode {
 	case domain.DisplayModeTerminal:
 		displaySystem = terminal.NewTerminalSystem()
 	case domain.DisplayModeWebsocket:
-		displaySystem = websocket.NewWSSystem()
+		displaySystem = websocket.NewWSSystem(config.DisplayPort)
 	default:
 		log.Fatalf("unknown display mode: %v", config.DisplayMode)
 	}

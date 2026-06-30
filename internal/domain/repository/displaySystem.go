@@ -15,4 +15,5 @@ type DisplaySystem interface {
 	DisplayVillagerVictory()
 	DisplayWerewolfVictory()
 	DisplayVictim(victim string, role domain.Role)
+	DisplayVote(voter string, target string)
 }

@@ -51,3 +51,7 @@ func (t *TerminalSystem) DisplayWerewolfVictory() {
 func (t *TerminalSystem) DisplayVictim(victim string, role domain.Role) {
 	fmt.Printf("\n💀 Le verdict est tombé : %s est éliminé.\n Il avait le rôle de %s\n", victim, role)
 }
+
+func (t *TerminalSystem) DisplayVote(voter string, target string) {
+	fmt.Printf("- %s vote contre %s\n", voter, target)
+}

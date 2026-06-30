@@ -7,6 +7,7 @@ import (
 	"strings"
 	"tiercelieux-llm-go/internal/domain"
 	"tiercelieux-llm-go/internal/domain/repository"
+	"tiercelieux-llm-go/internal/logger"
 	"time"
 )
 
@@ -28,6 +29,7 @@ func NewEngine(playerCount int, playerSystem repository.PlayerSystem, displaySys
 
 func (e *Engine) Run(ctx context.Context) {
 	for !e.IsGameOver() {
+		e.Game.GameState = domain.GameStateNight
 		e.DisplaySystem.DisplaySummary(e.Game)
 
 		lastNightAction := ""
@@ -36,6 +38,9 @@ func (e *Engine) Run(ctx context.Context) {
 		if e.IsGameOver() {
 			break
 		}
+
+		e.Game.GameState = domain.GameStateDay
+		e.DisplaySystem.DisplaySummary(e.Game)
 
 		situation := fmt.Sprintf(
 			`Le jour se lève sur le village. 
@@ -70,8 +75,9 @@ func (e *Engine) ExecuteNightAction(ctx context.Context) string {
 		}
 	}
 
-	log.Default().Printf("Les loups-garous ont mangé %s\n", victim)
+	logger.Infof("Werewolves ate %s", victim)
 	e.Game.EliminatePlayer(victim)
+	e.DisplaySystem.DisplayVictim(victim, e.Game.Deceased[victim].Role())
 	return victim
 }
 
@@ -79,12 +85,13 @@ func (e *Engine) RunDebate(ctx context.Context, situation string) string {
 	var strBuilder strings.Builder
 
 	for _, p := range e.Game.AllPlayers() {
-		strBuilder.WriteString(fmt.Sprintf("[%s] (%s) : ", p.Name, p.Temperament))
 		reply, err := e.PlayerSystem.Talk(ctx, p, situation)
 		if err != nil {
 			log.Default().Printf("Erreur: %v\n", err)
 		} else {
-			e.DisplaySystem.Display(reply)
+			formatted := fmt.Sprintf("[%s] (%s) : %s", p.Name(), p.Temperament().String(), reply)
+			strBuilder.WriteString(formatted + "\n")
+			e.DisplaySystem.Display(formatted)
 		}
 	}
 
@@ -98,7 +105,7 @@ func (e *Engine) ExecuteVotes(ctx context.Context, debate string) {
 		if err != nil {
 			fmt.Printf("Erreur: %v\n", err)
 		} else {
-			fmt.Printf("- %s vote contre %s\n", p.Name(), target)
+			e.DisplaySystem.DisplayVote(p.Name(), target)
 			votesTable[target]++
 		}
 	}
@@ -116,7 +123,7 @@ func (e *Engine) ExecuteVotes(ctx context.Context, debate string) {
 	if victim != "" {
 		e.Game.EliminatePlayer(victim)
 		e.DisplaySystem.DisplayVictim(victim, e.Game.Deceased[victim].Role())
-		log.Printf("Le village compte désormais %d villageois et %d loups-garous\n", len(e.Game.Villagers), len(e.Game.Werewolves))
+		logger.Infof("%d villagers | %d werewolves", len(e.Game.Villagers), len(e.Game.Werewolves))
 	}
 	e.Game.Turn++
 }

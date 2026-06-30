@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Les Loups-Garous de Thiergolieux - Live Simulation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Cinzel:wght@500;700;900&family=Almendra:ital,wght@0,400;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-color: #060608;
+        --card-bg: rgba(14, 14, 18, 0.85);
+        --card-border: rgba(185, 28, 28, 0.12); /* Dried blood red subtle border */
+        --card-border-alive: rgba(255, 255, 255, 0.05);
+        --text-primary: #e2e8f0;
+        --text-secondary: #71717a;
+        
+        /* Terrifying but sober color palette */
+        --accent-red: #991b1b;       /* Crimson Blood */
+        --accent-blue: #1e3a8a;      /* Deep Midnight Blue */
+        --accent-green: #064e3b;     /* Dark Forest Green */
+        --accent-gold: #b45309;      /* Burnt Copper / Amber */
+        --accent-purple: #4c1d95;    /* Night Shadow Violet */
+        
+        --text-red: #ef4444;
+        --text-blue: #60a5fa;
+        --text-green: #34d399;
+        --text-gold: #fbbf24;
+        --text-purple: #a78bfa;
+
+        --neon-shadow-red: 0 0 15px rgba(153, 27, 27, 0.5);
+        --neon-shadow-blue: 0 0 15px rgba(30, 58, 138, 0.4);
+        --glass-blur: blur(16px);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: "Plus Jakarta Sans", sans-serif;
+        background-color: var(--bg-color);
+        background-image:
+          radial-gradient(
+            circle at 50% 0%,
+            rgba(76, 29, 149, 0.15) 0%,
+            transparent 70%
+          ),
+          radial-gradient(
+            circle at 50% 100%,
+            rgba(153, 27, 27, 0.1) 0%,
+            transparent 70%
+          );
+        background-attachment: fixed;
+        color: var(--text-primary);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow-x: hidden;
+        position: relative;
+        transition: background 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      /* Terrifying Vignette Frame */
+      body::before {
+        content: "";
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        pointer-events: none;
+        z-index: 10;
+        box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.9);
+        transition: box-shadow 2s ease;
+      }
+
+      body.night-mode {
+        background-color: #020204;
+        background-image:
+          radial-gradient(
+            circle at 50% 0%,
+            rgba(59, 7, 100, 0.25) 0%,
+            transparent 60%
+          ),
+          radial-gradient(
+            circle at 50% 100%,
+            rgba(20, 20, 30, 0.3) 0%,
+            transparent 70%
+          );
+      }
+
+      body.night-mode::before {
+        box-shadow: inset 0 0 140px rgba(0, 0, 0, 0.98);
+      }
+
+      /* Flickering Candle Atmosphere */
+      .atmosphere {
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        pointer-events: none;
+        z-index: 1;
+        background: radial-gradient(circle, rgba(185, 28, 28, 0.03) 0%, transparent 80%);
+        animation: flicker 6s infinite alternate ease-in-out;
+      }
+
+      body.night-mode .atmosphere {
+        background: radial-gradient(circle, rgba(109, 40, 217, 0.03) 0%, transparent 80%);
+        animation: flicker 4s infinite alternate ease-in-out;
+      }
+
+      @keyframes flicker {
+        0%, 100% { opacity: 0.8; }
+        50% { opacity: 0.95; }
+        75% { opacity: 0.85; }
+      }
+
+      header {
+        background: rgba(6, 6, 8, 0.95);
+        backdrop-filter: var(--glass-blur);
+        border-bottom: 1px solid var(--card-border);
+        padding: 1rem 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+      }
+
+      h1 {
+        font-family: "Almendra", serif;
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        background: linear-gradient(
+          135deg,
+          #f5f6f9 40%,
+          var(--text-red) 100%
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+      }
+
+      .connection-panel {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(0, 0, 0, 0.4);
+        padding: 0.4rem 1rem;
+        border-radius: 4px;
+        border: 1px solid var(--card-border);
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--text-red);
+      }
+
+      .status-dot.connected {
+        background-color: var(--text-green);
+        box-shadow: 0 0 10px var(--text-green);
+        animation: pulse 2s infinite;
+      }
+
+      .status-text {
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+      }
+
+      main {
+        flex: 1;
+        display: flex;
+        max-width: 1440px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 1.5rem;
+        gap: 1.5rem;
+        height: calc(100vh - 75px);
+        min-height: 500px;
+        z-index: 2;
+      }
+
+      .sidebar {
+        width: 340px;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        flex-shrink: 0;
+      }
+
+      .panel {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        backdrop-filter: var(--glass-blur);
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: border-color 1s ease;
+      }
+
+      body.night-mode .panel {
+        border-color: rgba(76, 29, 149, 0.25);
+      }
+
+      .panel-header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--card-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.3);
+      }
+
+      body.night-mode .panel-header {
+        border-bottom-color: rgba(76, 29, 149, 0.25);
+      }
+
+      .panel-title {
+        font-family: "Almendra", serif;
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        letter-spacing: 0.5px;
+      }
+
+      .turn-badge {
+        background: var(--accent-purple);
+        border: 1px solid var(--text-purple);
+        color: white;
+        padding: 0.2rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        font-family: "Almendra", serif;
+        box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+      }
+
+      .players-list {
+        padding: 1rem;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        flex: 1;
+      }
+
+      .player-card {
+        background: rgba(255, 255, 255, 0.01);
+        border: 1px solid var(--card-border-alive);
+        border-radius: 6px;
+        padding: 0.85rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .player-card:hover {
+        transform: translateX(3px);
+        border-color: rgba(185, 28, 28, 0.3);
+        background: rgba(185, 28, 28, 0.02);
+      }
+
+      .player-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .player-name {
+        font-family: "Almendra", serif;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+
+      .player-badges {
+        display: flex;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+      }
+
+      .badge {
+        font-size: 0.7rem;
+        padding: 0.15rem 0.45rem;
+        border-radius: 3px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .badge-temperament {
+        background: rgba(180, 83, 9, 0.12);
+        color: var(--text-gold);
+        border: 1px solid rgba(180, 83, 9, 0.3);
+      }
+
+      .badge-role-villager {
+        background: rgba(30, 58, 138, 0.2);
+        color: var(--text-blue);
+        border: 1px solid rgba(30, 58, 138, 0.4);
+      }
+
+      .badge-role-werewolf {
+        background: rgba(153, 27, 27, 0.25);
+        color: var(--text-red);
+        border: 1px solid rgba(153, 27, 27, 0.5);
+        box-shadow: var(--neon-shadow-red);
+      }
+
+      /* Dead Player Card - Eerie / Ashy look */
+      .player-card.deceased {
+        opacity: 0.65;
+        border-color: rgba(153, 27, 27, 0.35);
+        background: rgba(10, 10, 12, 0.95);
+        box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.85);
+      }
+
+      .player-card.deceased:hover {
+        transform: none;
+        border-color: rgba(153, 27, 27, 0.35);
+        background: rgba(10, 10, 12, 0.95);
+      }
+
+      .player-card.deceased .player-name {
+        text-decoration: line-through;
+        color: var(--text-secondary);
+        font-style: italic;
+      }
+
+      .player-card.deceased .player-name::before {
+        content: "🪦 ";
+        opacity: 0.7;
+      }
+
+      .deceased-badge {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        background: rgba(153, 27, 27, 0.2);
+        color: var(--text-red);
+        border: 1px solid var(--accent-red);
+        padding: 0.15rem 0.4rem;
+        font-size: 0.65rem;
+        font-weight: 700;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        text-transform: uppercase;
+        font-family: "Almendra", serif;
+      }
+
+      .game-console {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .console-logs {
+        flex: 1;
+        padding: 1.25rem;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        scroll-behavior: smooth;
+        background: rgba(0, 0, 0, 0.25);
+      }
+
+      /* Message Styles */
+      .log-item {
+        animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      @keyframes slideIn {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Day / Night Divider */
+      .turn-divider {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin: 1.5rem 0 0.5rem 0;
+      }
+
+      .turn-divider::before,
+      .turn-divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(185, 28, 28, 0.15),
+          transparent
+        );
+      }
+
+      body.night-mode .turn-divider::before,
+      body.night-mode .turn-divider::after {
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(139, 92, 246, 0.15),
+          transparent
+        );
+      }
+
+      .turn-divider-content {
+        font-family: "Almendra", serif;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--text-gold);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .turn-divider.night .turn-divider-content {
+        color: var(--text-purple);
+      }
+
+      /* Immersive Speech Cards */
+      .talk-card {
+        background: rgba(14, 14, 18, 0.75);
+        border-left: 3px solid var(--accent-blue);
+        border-radius: 4px;
+        padding: 0.85rem 1.1rem;
+        max-width: 85%;
+        margin-right: auto;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        border-top: 1px solid rgba(255, 255, 255, 0.02);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.5);
+      }
+
+      .talk-card.werewolf-talk {
+        border-left-color: var(--accent-red);
+        background: rgba(153, 27, 27, 0.03);
+        box-shadow: 0 4px 15px rgba(153, 27, 27, 0.05);
+      }
+
+      .talk-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.4rem;
+      }
+
+      .talk-sender {
+        font-family: "Almendra", serif;
+        font-weight: 700;
+        font-size: 1.05rem;
+        color: var(--text-primary);
+      }
+
+      .talk-text {
+        font-size: 0.92rem;
+        line-height: 1.5;
+        color: #d1d5db;
+      }
+
+      /* Vote Card - Target / Crosshair styling */
+      .vote-card {
+        background: rgba(180, 83, 9, 0.03);
+        border: 1px dashed rgba(180, 83, 9, 0.3);
+        border-radius: 4px;
+        padding: 0.6rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--text-gold);
+        font-size: 0.88rem;
+        font-family: "Almendra", serif;
+        width: fit-content;
+        margin: 0.2rem 0;
+        box-shadow: inset 0 0 10px rgba(180, 83, 9, 0.02);
+      }
+
+      /* Terrifying Blood-Dripping Elimination Card */
+      .elimination-card {
+        background: linear-gradient(to right, rgba(153, 27, 27, 0.12), rgba(10, 10, 12, 0.3));
+        border: 1px solid rgba(153, 27, 27, 0.35);
+        border-radius: 6px;
+        padding: 1.1rem;
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        box-shadow: var(--neon-shadow-red);
+        animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards, shake 0.5s ease-in-out;
+        margin: 0.75rem 0;
+        position: relative;
+      }
+
+      .elimination-card::before {
+        content: "🩸";
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 1.2rem;
+        opacity: 0.5;
+      }
+
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        20%, 60% { transform: translateX(-4px); }
+        40%, 80% { transform: translateX(4px); }
+      }
+
+      .elimination-icon {
+        font-size: 1.8rem;
+        color: var(--text-red);
+        filter: drop-shadow(0 0 5px var(--text-red));
+      }
+
+      .elimination-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .elimination-title {
+        font-family: "Almendra", serif;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--text-red);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .elimination-desc {
+        font-size: 0.92rem;
+        color: #d1d5db;
+      }
+
+      /* Gothic Victory Card */
+      .victory-banner {
+        background: linear-gradient(
+          135deg,
+          rgba(6, 78, 59, 0.25) 0%,
+          rgba(30, 58, 138, 0.25) 100%
+        );
+        border: 2px solid var(--text-green);
+        border-radius: 8px;
+        padding: 2.5rem 1.5rem;
+        text-align: center;
+        box-shadow: 0 0 35px rgba(6, 78, 59, 0.3);
+        margin: 2rem 0;
+        animation: scaleUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      }
+
+      .victory-banner.werewolves {
+        background: linear-gradient(
+          135deg,
+          rgba(153, 27, 27, 0.35) 0%,
+          rgba(76, 29, 149, 0.35) 100%
+        );
+        border-color: var(--text-red);
+        box-shadow: 0 0 45px rgba(153, 27, 27, 0.45);
+      }
+
+      @keyframes scaleUp {
+        from {
+          transform: scale(0.9);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      .victory-title {
+        font-family: "Almendra", serif;
+        font-size: 2.2rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        margin-bottom: 0.75rem;
+        text-transform: uppercase;
+      }
+
+      .victory-banner.werewolves .victory-title {
+        background: linear-gradient(135deg, #fff 30%, var(--text-red) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .victory-banner:not(.werewolves) .victory-title {
+        background: linear-gradient(135deg, #fff 30%, var(--text-green) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .victory-desc {
+        font-family: "Almendra", serif;
+        font-size: 1.25rem;
+        color: var(--text-primary);
+        font-weight: 500;
+      }
+
+      /* Custom scrollbar - Ashen / Charcoal */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.3);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(185, 28, 28, 0.15);
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(185, 28, 28, 0.35);
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+
+      @media (max-width: 900px) {
+        main {
+          flex-direction: column;
+          height: auto;
+          overflow: visible;
+        }
+        .sidebar {
+          width: 100%;
+          height: auto;
+        }
+        .game-console {
+          height: 600px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="atmosphere"></div>
+    <header>
+      <h1 style="display: flex; align-items: center; gap: 1rem">
+        <img
+          src="/logo.png"
+          alt="Logo"
+          style="
+            height: 50px;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+          "
+        />
+        Les Loups-Garous de Thiergolieux
+      </h1>
+      <div class="connection-panel">
+        <div id="connection-status" class="status-dot"></div>
+        <span id="status-text" class="status-text">Connexion...</span>
+      </div>
+    </header>
+
+    <main>
+      <div class="sidebar">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">👥 Joueurs</span>
+            <span id="turn-badge" class="turn-badge">Jour 1</span>
+          </div>
+          <div id="players-list" class="players-list">
+            <!-- Les cartes des joueurs seront insérées ici -->
+          </div>
+        </div>
+      </div>
+
+      <div class="panel game-console">
+        <div class="panel-header">
+          <span class="panel-title">📜 Journal du Village</span>
+        </div>
+        <div id="console-logs" class="console-logs">
+          <!-- Les logs de jeu seront insérés ici -->
+        </div>
+      </div>
+    </main>
+
+    <script>
+      window.addEventListener("load", function () {
+        const logsContainer = document.getElementById("console-logs");
+        const playersContainer = document.getElementById("players-list");
+        const turnBadge = document.getElementById("turn-badge");
+        const connectionStatus = document.getElementById("connection-status");
+        const statusText = document.getElementById("status-text");
+
+        let currentTurn = 0;
+        let currentPhase = "day"; // "day" or "night"
+
+        function connect() {
+          const ws = new WebSocket("{{.}}");
+
+          ws.onopen = function () {
+            connectionStatus.className = "status-dot connected";
+            statusText.textContent = "Connecté";
+            logsContainer.innerHTML = ""; // reset on fresh connect if preferred, or keep
+          };
+
+          ws.onclose = function () {
+            connectionStatus.className = "status-dot";
+            statusText.textContent = "Déconnecté - reconnexion...";
+            setTimeout(connect, 2000);
+          };
+
+          ws.onmessage = function (evt) {
+            try {
+              const msg = JSON.parse(evt.data);
+              handleMessage(msg);
+            } catch (err) {
+              console.error("Error parsing message:", err, evt.data);
+            }
+          };
+        }
+
+        function handleMessage(msg) {
+          switch (msg.type) {
+            case "summary":
+              renderSummary(msg.payload);
+              break;
+            case "talk":
+              renderTalk(msg.payload);
+              break;
+            case "vote":
+              renderVote(msg.payload);
+              break;
+            case "victim":
+              renderVictim(msg.payload);
+              break;
+            case "victory":
+              renderVictory(msg.payload);
+              break;
+          }
+        }
+
+        function renderSummary(payload) {
+          // Update turn badge and page styling for phase
+          const isNight = payload.phase === "night";
+          if (isNight) {
+            document.body.classList.add("night-mode");
+          } else {
+            document.body.classList.remove("night-mode");
+          }
+
+          if (
+            payload.turn !== currentTurn ||
+            (isNight && currentPhase !== "night") ||
+            (!isNight && currentPhase === "night")
+          ) {
+            currentTurn = payload.turn;
+            currentPhase = isNight ? "night" : "day";
+
+            const phaseEmoji = isNight ? "🌙" : "☀️";
+            const phaseName = isNight ? "Nuit" : "Jour";
+            turnBadge.textContent = `${phaseName} ${currentTurn}`;
+            turnBadge.style.background = isNight
+              ? "var(--accent-purple)"
+              : "var(--accent-gold)";
+            turnBadge.style.boxShadow = isNight
+              ? "0 0 10px rgba(139, 92, 246, 0.5)"
+              : "0 0 10px rgba(251, 191, 36, 0.5)";
+
+            // Add a turn divider to log
+            const div = document.createElement("div");
+            div.className = "log-item turn-divider" + (isNight ? " night" : "");
+            div.innerHTML = `<span class="turn-divider-content">${phaseEmoji} ${phaseName} ${currentTurn}</span>`;
+            logsContainer.appendChild(div);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+          }
+
+          // Render players
+          playersContainer.innerHTML = "";
+          payload.players.forEach((p) => {
+            const card = document.createElement("div");
+            card.className = "player-card" + (p.isAlive ? "" : " deceased");
+
+            let roleBadge = "";
+            if (!p.isAlive) {
+              roleBadge = `<span class="deceased-badge">💀 Mort (${p.role})</span>`;
+            } else {
+              const roleClass =
+                p.role === "Loup-Garou"
+                  ? "badge-role-werewolf"
+                  : "badge-role-villager";
+              roleBadge = `<span class="badge ${roleClass}">${p.role}</span>`;
+            }
+
+            card.innerHTML = `
+                        <div class="player-header">
+                            <span class="player-name">${p.name}</span>
+                            ${roleBadge}
+                        </div>
+                        <div class="player-badges">
+                            <span class="badge badge-temperament">${p.temperament}</span>
+                        </div>
+                    `;
+            playersContainer.appendChild(card);
+          });
+        }
+
+        function renderTalk(payload) {
+          const text = payload.content;
+          // Parse speaker information if matching the format "[Name] (Temperament) : Message"
+          const talkRegex = /^\[([^\]]+)\]\s*\(([^)]+)\)\s*:\s*(.*)$/;
+          const match = text.match(talkRegex);
+
+          const card = document.createElement("div");
+          card.className = "log-item talk-card";
+
+          if (match) {
+            const name = match[1];
+            const temp = match[2];
+            const speech = match[3];
+
+            card.innerHTML = `
+                        <div class="talk-meta">
+                            <span class="talk-sender">${name}</span>
+                            <span class="badge badge-temperament">${temp}</span>
+                        </div>
+                        <div class="talk-text">${speech}</div>
+                    `;
+          } else {
+            card.innerHTML = `<div class="talk-text">${text}</div>`;
+          }
+
+          logsContainer.appendChild(card);
+          logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        function renderVote(payload) {
+          const card = document.createElement("div");
+          card.className = "log-item vote-card";
+          card.innerHTML = `🎯 <strong>${payload.voter}</strong> vote contre <strong>${payload.target}</strong>`;
+          logsContainer.appendChild(card);
+          logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        function renderVictim(payload) {
+          const card = document.createElement("div");
+          card.className = "log-item elimination-card";
+          card.innerHTML = `
+                    <div class="elimination-icon">💀</div>
+                    <div class="elimination-info">
+                        <div class="elimination-title">Les loups ont attaqué !</div>
+                        <div class="elimination-desc"><strong>${payload.victim}</strong> a été dévoré.</div>
+                    </div>
+                `;
+          logsContainer.appendChild(card);
+          logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        function renderVictory(payload) {
+          const card = document.createElement("div");
+          const isWerewolves = payload.winner.toLowerCase().includes("loup");
+          card.className =
+            "log-item victory-banner" + (isWerewolves ? " werewolves" : "");
+
+          const title = isWerewolves
+            ? "Victoire des Loups-Garous !"
+            : "Victoire du Village !";
+          const desc = isWerewolves
+            ? "Les loups ont dévoré tout le village..."
+            : "Le dernier Loup-Garou a été débusqué et éliminé !";
+
+          card.innerHTML = `
+                    <div class="victory-title">${title}</div>
+                    <div class="victory-desc">${desc}</div>
+                `;
+          logsContainer.appendChild(card);
+          logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        connect();
+      });
+    </script>
+  </body>
+</html>

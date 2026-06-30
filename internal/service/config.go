@@ -17,9 +17,12 @@ const (
 	envOllamaUrl   = "OLLAMA_URL"
 	envOllamaModel = "OLLAMA_MODEL"
 
-	envGameMode    = "GAME_MODE"
+	envGameMode = "GAME_MODE"
+
 	envDisplayMode = "DISPLAY_MODE"
-	envLogLevel    = "LOG_LEVEL"
+	envDisplayPort = "DISPLAY_PORT"
+
+	envLogLevel = "LOG_LEVEL"
 
 	commentPrefix = "#"
 	separator     = "="
@@ -33,6 +36,7 @@ type Config struct {
 	OllamaModel string
 	GameMode    domain.GameMode
 	DisplayMode domain.DisplayMode
+	DisplayPort string
 	LogLevel    string
 }
 
@@ -82,6 +86,8 @@ func NewConfig() Config {
 				default:
 					log.Fatalf("invalid display mode: %s", value)
 				}
+			case envDisplayPort:
+				config.DisplayPort = value
 			case envLogLevel:
 				config.LogLevel = value
 			}
