@@ -17,6 +17,7 @@ import (
 
 const (
 	ToolCallingVote = "Vote"
+	DummyToken      = "ollama"
 )
 
 type LLM struct {
@@ -32,13 +33,10 @@ func NewLLM(ctx context.Context, config Config) (repository.PlayerSystem, error)
 			log.Fatal(err)
 		}
 	} else {
-		// Use OpenAI-compatible client pointing to Ollama's local URL.
-		// Ollama's OpenAI API is at config.OllamaUrl + "/v1" (e.g. http://localhost:11434/v1).
-		// This provides native tool calling support which the langchaingo ollama client lacks.
 		llm, err = openai.New(
 			openai.WithBaseURL(config.OllamaUrl+"/v1"),
 			openai.WithModel(config.OllamaModel),
-			openai.WithToken("ollama"), // Ollama does not require a token but openai client needs one configured
+			openai.WithToken(DummyToken),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create ollama client: %v", err)
@@ -65,10 +63,10 @@ func (l *LLM) Talk(ctx context.Context, player domain.PlayerInterface, situation
 	response, err := l.model.GenerateContent(ctx, []llms.MessageContent{
 		llms.TextParts(llms.ChatMessageTypeSystem, systemPrompt),
 		llms.TextParts(llms.ChatMessageTypeHuman, situation),
-	}, llms.WithMaxTokens(60))
+	}, llms.WithMaxTokens(120))
 
 	if err != nil {
-		return "", fmt.Errorf("Erreur de réponse : %v", err)
+		return "", fmt.Errorf("erreur de réponse : %v", err)
 	}
 
 	reply := response.Choices[0].Content
@@ -134,7 +132,10 @@ func (l *LLM) ChooseWhoToVote(ctx context.Context, player domain.PlayerInterface
 			logger.Debugf("Tool Call: %v\n", toolCall)
 			if toolCall.FunctionCall.Name == ToolCallingVote {
 				var args VoteArgument
-				json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args)
+				err := json.Unmarshal([]byte(toolCall.FunctionCall.Arguments), &args)
+				if err != nil {
+					return "", err
+				}
 				target := strings.TrimSpace(args.Name)
 				logger.Debugf("Target: %s\n", target)
 				for _, suspect := range suspects {
@@ -146,7 +147,7 @@ func (l *LLM) ChooseWhoToVote(ctx context.Context, player domain.PlayerInterface
 		}
 	}
 
-	return "", fmt.Errorf("No target found, picking randomly")
+	return "", fmt.Errorf("no target found, picking randomly")
 }
 
 func (l *LLM) ChooseWhoToEat(ctx context.Context, player *domain.Werewolf, villagers map[string]domain.Villager) *domain.Villager {

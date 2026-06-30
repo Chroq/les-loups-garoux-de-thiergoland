@@ -2,14 +2,10 @@ package websocket
 
 import (
 	_ "embed"
-	"flag"
 	"html/template"
 	"log"
 	"net/http"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"tiercelieux-llm-go/internal/domain"
 
 	"github.com/gorilla/websocket"
@@ -59,24 +55,54 @@ type WSMessage struct {
 	Payload any    `json:"payload,omitempty"`
 }
 
+type client struct {
+	ws   *WSSystem
+	conn *websocket.Conn
+	send chan WSMessage
+}
+
+// writePump handles writing messages to the websocket client.
+// Launching a dedicated writer per client avoids blocking the main broadcast hub.
+func (c *client) writePump() {
+	defer func() {
+		err := c.conn.Close()
+		if err != nil {
+			log.Printf("failed to close websocket: %v", err)
+		}
+	}()
+	for msg := range c.send {
+		if err := c.conn.WriteJSON(msg); err != nil {
+			return
+		}
+	}
+}
+
 type WSSystem struct {
-	clients   map[*websocket.Conn]bool
-	clientsMu sync.Mutex
+	clients     map[*client]bool
+	register    chan *client
+	unregister  chan *client
+	broadcastCh chan WSMessage
+
 	history   []WSMessage
-	historyMu sync.Mutex
+	historyMu sync.RWMutex
 }
 
 func NewWSSystem(port string) *WSSystem {
-	flag.Parse()
-	log.SetFlags(0)
-
 	ws := &WSSystem{
-		clients: make(map[*websocket.Conn]bool),
+		clients:     make(map[*client]bool),
+		register:    make(chan *client),
+		unregister:  make(chan *client),
+		broadcastCh: make(chan WSMessage, 256),
 	}
+
+	go ws.run()
 
 	http.HandleFunc("/logo.png", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
-		w.Write(logoBytes)
+		_, err := w.Write(logoBytes)
+		if err != nil {
+			log.Printf("failed to write logo: %v", err)
+		}
 	})
 	http.HandleFunc("/echo", ws.handleWebSocket)
 	http.HandleFunc("/", ws.handleHome)
@@ -85,42 +111,46 @@ func NewWSSystem(port string) *WSSystem {
 		log.Fatal(http.ListenAndServe("localhost:"+port, nil))
 	}()
 
-	// Graceful shutdown on termination signals (e.g. Ctrl+C, SIGTERM, Ctrl+D if shell exits)
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		log.Println("Shutdown signal received, closing WebSocket connections...")
-		ws.Close()
-		os.Exit(0)
-	}()
-
 	return ws
 }
 
-func (ws *WSSystem) Close() {
-	ws.clientsMu.Lock()
-	conns := make([]*websocket.Conn, 0, len(ws.clients))
-	for client := range ws.clients {
-		conns = append(conns, client)
-	}
-	ws.clientsMu.Unlock()
+// run handles the lifecycle, registration and message broadcasting for all connections.
+func (ws *WSSystem) run() {
+	for {
+		select {
+		case client := <-ws.register:
+			ws.clients[client] = true
+		case client := <-ws.unregister:
+			if _, ok := ws.clients[client]; ok {
+				delete(ws.clients, client)
+				close(client.send)
+			}
+		case msg := <-ws.broadcastCh:
+			ws.historyMu.Lock()
+			ws.history = append(ws.history, msg)
+			ws.historyMu.Unlock()
 
-	for _, client := range conns {
-		// Send Close frame to client
-		err := client.WriteMessage(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Server shutting down"),
-		)
-		if err != nil {
-			log.Println("Error sending WS close message:", err)
+			for client := range ws.clients {
+				select {
+				case client.send <- msg:
+				default:
+					close(client.send)
+					delete(ws.clients, client)
+					err := client.conn.Close()
+					if err != nil {
+						log.Printf("failed to close websocket: %v", err)
+					}
+				}
+			}
 		}
-		client.Close()
 	}
 }
 
 func (ws *WSSystem) handleHome(w http.ResponseWriter, r *http.Request) {
-	homeTemplate.Execute(w, "ws://"+r.Host+"/echo")
+	err := homeTemplate.Execute(w, "ws://"+r.Host+"/echo")
+	if err != nil {
+		http.Error(w, "Error executing template", http.StatusInternalServerError)
+	}
 }
 
 var upgrader = websocket.Upgrader{
@@ -136,29 +166,39 @@ func (ws *WSSystem) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ws.clientsMu.Lock()
-	ws.clients[c] = true
-	ws.clientsMu.Unlock()
+	// 1. Replay history to the new client before registering.
+	// This avoids any concurrent writes from other goroutines while history is replayed.
+	ws.historyMu.RLock()
+	msgs := make([]WSMessage, len(ws.history))
+	copy(msgs, ws.history)
+	ws.historyMu.RUnlock()
 
-	defer func() {
-		ws.clientsMu.Lock()
-		delete(ws.clients, c)
-		ws.clientsMu.Unlock()
-		c.Close()
-	}()
-
-	// Replay history to the new client so they see everything that happened
-	ws.historyMu.Lock()
-	for _, msg := range ws.history {
+	for _, msg := range msgs {
 		if err := c.WriteJSON(msg); err != nil {
 			log.Println("write history err:", err)
-			ws.historyMu.Unlock()
+			err = c.Close()
+			if err != nil {
+				log.Printf("failed to close websocket: %v", err)
+			}
 			return
 		}
 	}
-	ws.historyMu.Unlock()
 
-	// Keep connection alive
+	client := &client{
+		ws:   ws,
+		conn: c,
+		send: make(chan WSMessage, 256),
+	}
+	ws.register <- client
+
+	// Start writing pump for this client
+	go client.writePump()
+
+	defer func() {
+		ws.unregister <- client
+	}()
+
+	// Keep connection alive and read incoming messages
 	for {
 		_, _, err := c.ReadMessage()
 		if err != nil {
@@ -168,21 +208,7 @@ func (ws *WSSystem) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ws *WSSystem) broadcast(msg WSMessage) {
-	// Store in history
-	ws.historyMu.Lock()
-	ws.history = append(ws.history, msg)
-	ws.historyMu.Unlock()
-
-	// Send to all clients
-	ws.clientsMu.Lock()
-	defer ws.clientsMu.Unlock()
-	for client := range ws.clients {
-		if err := client.WriteJSON(msg); err != nil {
-			log.Printf("error writing to client: %v", err)
-			client.Close()
-			delete(ws.clients, client)
-		}
-	}
+	ws.broadcastCh <- msg
 }
 
 func (w *WSSystem) DisplaySummary(game *domain.Game) {

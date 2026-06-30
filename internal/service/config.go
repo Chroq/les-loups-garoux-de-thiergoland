@@ -47,7 +47,11 @@ func NewConfig() Config {
 	if err != nil {
 		log.Fatalf("failed to open %s file: %v", envFile, err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Fatalf("failed to close %s file: %v", envFile, err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

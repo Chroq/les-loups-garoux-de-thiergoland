@@ -5,13 +5,6 @@ import (
 	"tiercelieux-llm-go/internal/domain"
 )
 
-// `
-// 	fmt.Printf("\n=================== JOUR %d ===================\n", e.Game.Turn)
-// 	fmt.Println("\n🌙 [Nuit] Les Loups-Garous se réveillent...")
-// 	fmt.Println("\n💬 [Début du débat public] :")
-// 	fmt.Println("\n[Fin du débat du jour]")
-// `
-
 type TerminalSystem struct{}
 
 func NewTerminalSystem() *TerminalSystem {
